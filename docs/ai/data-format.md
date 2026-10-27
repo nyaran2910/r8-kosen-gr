@@ -1,0 +1,41 @@
+# 登録形式の詳細案
+
+[ユーザー向け概要](../common/data-format.md) の配置・記法・レビュー記録の方針はユーザー確認済み。形式を説明する文書のみ作成し、実ファイル・スキーマ実装・登録CLI・DB変更は行わない。
+
+## 配置と参照
+
+curatedに登録用ファイル、reviewsに根拠とレビュー記録を分離する提案。単位を束ねるmanifestは一つで、JSON内の定義を正本とし、Markdown本文にIDや教科などの重複frontmatterを追加しない。原本は既存assets/sourcesを参照する。データの公開・Git追跡方針はまだ確認が必要で、reviewsという名前は非公開を保証しない。
+
+manifestはschema_version（初版1）、bundle_id（安定UUID）、subjects・exams・genres・formats・knowledge_elements・exam_genres・exam_formats・problems・problem_genres・problem_knowledgeの各配列を持つ案。参照専用の配列は現行DBの外部キー名に合わせる。本文参照はbody_file、ジャンルと形式の説明参照はdescription_file、問題の解答参照はanswer_file、解説参照はexplanation_file。DBには読み込んだTEXTとして格納する。初版は定義ごとにJSONを分けず、規模拡大で分割を検討する。
+
+レビュー承認済みデータは学習データや認証情報を含めない。共有定義の外部参照はレビュー済みDB定義または同時登録する別の単位から解決する。新規DBでは参照する単位を先に登録する。全IDがUUIDか確認し、同じ定義を試験ごとに複製しない。コストはnullまたは数値で、未決定尺度の範囲制約を勝手に固定しない。
+
+パスはmanifest所在地、画像参照はMarkdown所在地から解決する。登録単位外への脱出・絶対パス・file URL・許可しないシンボリックリンクを拒否する設計。provenanceの原本参照は別のsource_root基準で解決し、配信対象にしない。Markdown画像は独自作成または利用条件確認済みの同単位images配下だけを初版対象とする。画像の配信方式・サイズ上限は描画設計時に具体化する。
+
+## Markdownの意味
+
+内部知識リンクは `/knowledge/<UUID>`。タイトルの同一性やmdのファイル名を使って参照しない。知識リンクを登録前に検証し、欠落なら登録を止める。通常のhttps参照と内部リンクを区別する。本文リンクは参考・概念参照であり、知識の前提関係を自動で表すものではない。初版にknowledge_linksテーブルを要求しない。
+
+problem_knowledgeは実際に問題で使い、必須評価する知識の明示的な集合。本文から抽出した全リンクで置き換えない。問題の説明に参考としてリンクした知識までコスト・評価対象へ加えない。knowledge_elementsの相互リンクに循環があっても通常の参照として扱い、前提の有向非巡回構造とはみなさない。
+
+本文は標準MarkdownとTeX数式の案。生HTML・javascript URLを無条件に許可しない。問題内の小問は見出しや番号付きリストで記述し、別DBテーブルへ抽出しない。図の代替テキストを必須とする。実装に使うMarkdown・数式ライブラリは未選定。
+
+## provenance.jsonの構成案
+
+schema_version、bundle_id、sources、derivationsを持つ。sourcesにはsource_id、source_ref（許可した原本ルートからの相対参照）、source_url（不明はnull）、acquisition_method、acquired_at（不明はnull）、unresolved_questionsを持つ。derivationsはtarget_table・target_idまたは関連キー、source_id・対象箇所の識別子、method（manual_extraction／independent_writing／ai_assistedなど）、notesを持つ案。AI使用時は分かるモデル・作成日・プロンプト参照を記録するが、原本や秘密情報をプロンプト記録へ丸ごと複製しない。
+
+根拠のない取得日・レビュー担当名・AIモデル名を生成しない。抽出範囲の識別に年度・大問番号を使うことと、DBに年度等の専用カラムを作らないことは両立する。原本のハッシュを記録する場合も全文は保存しない。一般知識の独自記述と原本からの構造抽出の経緯を事実に沿って区別する。
+
+## review.jsonの構成案
+
+schema_version、bundle_id、status（pending／approved／rejected）、reviewed_by、reviewed_at、checks、filesを持つ。pendingでは担当・日時null可、approvedでは必須。checksには内容・解答・紐づけ・表現確認のレビュー結果を持つ。filesはmanifest・Markdown・画像・provenanceの各相対参照とSHA-256。レビュー記録自身はハッシュ対象から除いて自己参照を避ける。
+
+ファイル一つの差し替え、追加・削除で対象一覧・ハッシュが変われば登録を止め再レビューへ戻す。登録対象の一覧とmanifestの参照集合が一致するか検証する。ハッシュは内容の同一性を確認するためで、レビューの信頼性や非公開性・改ざん防止を単独で保証しない。レビュー済みと記録しただけで資料利用条件が確認済みにはならない。
+
+## CLIでの登録処理案
+
+構文と版→ファイルとハッシュ→IDと外部参照→リンクと教科・紐づけ→レビュー→既存DBとの差分の順に検証し、変更を人へ表示する。読み取り・差分確認だけではDBを書き換えない。実行時は一つのトランザクションで登録し、途中失敗は全部戻す。問題の変更は別ID、定義の軽微修正は差分承認、廃止は運用操作として別途扱う。ファイルから消しただけでDB定義・履歴を削除しない。
+
+## 次に詰める事項
+
+登録ファイル配置・記法・レビュー記録のまとめを確認した後、未解決のAPI計測・再送識別・復習結果の履歴保存と、描画・リンク戻り・画像配信をまとめて詰める。公開範囲、正式なJSON検証スキーマ、命名全候補は実データ作成前に具体化する。
