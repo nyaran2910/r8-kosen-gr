@@ -1,0 +1,13 @@
+ENV := "../../.env"
+
+alembic-head:
+  uv run --env-file {{ENV}} alembic upgrade head
+
+alembic-current:
+  uv run --env-file {{ENV}} alembic current
+
+alembic-revision message:
+  uv run --env-file {{ENV}} alembic revision --autogenerate -m {{quote(message)}}
+
+dev:
+  uv run --env-file {{ENV}} fastapi dev
